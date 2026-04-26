@@ -1,0 +1,31 @@
+Read the project and implement the following changes directly in the codebase:
+
+1. The project currently has only one input dataset file: `train`.
+   Add dataset splitting support so the project can automatically split this single input file into train/validation/test sets.
+   Requirements:
+   - configurable split ratio (default 8/1/1)
+   - reproducible split with random seed
+   - stratified split if labels are available and applicable
+   - save outputs in the same format already used by the project
+   - add any required config fields, CLI args, and documentation
+
+2. Add code for testing/evaluating a pretrained model.
+   Requirements:
+   - load an existing checkpoint or pretrained model
+   - run evaluation on the test set
+   - report key metrics such as accuracy, precision, recall, F1, and AUC if applicable
+   - support CLI args for checkpoint path, test path, batch size, device, etc.
+   - reuse existing config, model-building, dataloader, and inference logic where possible
+
+3. Constraints:
+   - keep the implementation consistent with the current project structure
+   - extend existing modules instead of duplicating logic
+   - add reasonable validation, path checks, and error handling
+   - if partial support already exists, integrate with it rather than rewriting from scratch
+
+4. Deliverables:
+   - modified code
+   - summary of changed files
+   - instructions for dataset splitting
+   - instructions for evaluating a pretrained model
+   - clearly mark assumptions or uncertainties

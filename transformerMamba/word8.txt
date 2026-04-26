@@ -1,0 +1,44 @@
+请在当前项目代码中修改训练流程，为 train.py 新增每一轮训练的动态进度条，并在每一轮结束后清晰打印验证集结果中的 acc。
+
+具体要求：
+
+1. 使用 tqdm 实现训练进度条。
+   - 每个 epoch 内部显示一个 batch 级别的动态进度条。
+   - 进度条需要显示当前 epoch，例如：Epoch 1/100。
+   - 进度条实时显示当前 batch 的 loss。
+   - 如果训练函数里已经累计 accuracy、f1、precision、recall 等指标，也可以在 postfix 中显示当前平均 loss 和 acc。
+
+2. 修改 train_one_epoch()。
+   - 在遍历 train_loader 时包一层 tqdm。
+   - 不要破坏现有的 loss 计算、反向传播、grad_clip、optimizer.step() 逻辑。
+   - 保持函数返回值结构不变，避免影响 main() 后续代码。
+
+3. 修改 main() 中每轮验证后的日志输出。
+   - 每个 epoch 验证结束后，必须显示验证集 accuracy。
+   - 日志格式建议类似：
+
+     Epoch 1/100 | train_loss=0.4213 | train_acc=0.8821 | val_loss=0.3927 | val_acc=0.9015 | val_f1=0.8942
+
+   - 如果现有 validate/evaluate 函数返回的指标字段不是 "acc"，请根据实际字段名自动适配，例如 "accuracy"、"binary_acc" 或类似字段。
+   - 不要只显示 best metric，要每一轮都显示当前验证集 acc。
+
+4. tqdm 导入方式：
+
+   from tqdm import tqdm
+
+   如果项目环境中没有 tqdm，请不要修改 requirements 文件以外的逻辑；可以顺手在 requirements.txt 中补充 tqdm。
+
+5. 注意兼容当前日志系统。
+   - 如果 train.py 当前使用 logger.info() 输出训练日志，请继续使用 logger.info()。
+   - tqdm 进度条不要和 logger 输出严重冲突。
+   - tqdm 建议设置：
+     leave=False 或 leave=True 均可，但每个 epoch 结束后必须保留一行清晰的 summary 日志。
+
+6. 请尽量只修改必要文件。
+   - 优先修改 train.py。
+   - 除非必须，不要重构模型、dataset、loss、config。
+   - 不要改变训练结果逻辑。
+   - 不要改变 checkpoint 保存逻辑。
+   - 不要改变 early stopping 逻辑。
+
+7. 完成后请给出修改点摘要，并指出新增进度条显示哪些字段、验证结果 acc 从哪个 metrics 字段读取。

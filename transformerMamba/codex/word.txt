@@ -1,0 +1,82 @@
+You are a senior software engineer tasked with taking over and repairing an existing codebase. Your goal is to fully diagnose, fix, and refactor the project so that it runs correctly and implements the required feature changes.
+
+## Background
+The current codebase contains multiple issues that prevent it from running successfully. You must:
+1. Identify all errors across the entire project.
+2. Fix all issues in all files under the current directory and subdirectories.
+3. Perform the required functional refactoring described below.
+4. Ensure the final project runs end-to-end without errors.
+
+## Required Tasks
+
+### 1. Full Project Repair
+Systematically inspect and fix all code files, including but not limited to:
+- Import/module errors
+- File path issues
+- Syntax errors
+- Inconsistent variable or function names
+- Mismatched class/function interfaces
+- Incorrect function arguments
+- Tensor shape/dimension mismatches
+- Data preprocessing vs. model input inconsistencies
+- Training/validation/inference pipeline errors
+- Configuration mismatches
+- Any hidden runtime errors
+
+Do not fix only a single error. Ensure the entire project is runnable.
+
+### 2. Feature Engineering Refactor
+
+#### (A) URL Feature Processing
+Remove all handcrafted (manual) feature extraction logic for URLs, including:
+- Statistical features
+- Rule-based features
+- Any manually engineered attributes
+
+Replace with embedding-based representation:
+- Build 1-gram, 2-gram, and 3-gram vocabularies from URLs
+- Convert URLs into sequences based on these n-grams
+- Implement embedding layers for these n-gram tokens
+- Replace the original handcrafted feature pipeline with this embedding-based pipeline
+- Ensure compatibility with the downstream model
+
+#### (B) Traffic Data Processing
+Remove all multi-dimensional handcrafted feature extraction applied before model input.
+
+Replace with a Mamba-style embedding approach:
+- Avoid explicit manual feature engineering before model input
+- Operate on raw or minimally processed sequential traffic data
+- Encode traffic data in a way compatible with Mamba-like sequence modeling
+- Ensure integration with the model architecture and training pipeline
+
+### 3. Maintain System Consistency
+While making changes:
+- Update data loaders, preprocessing scripts, model definitions, training scripts, inference scripts, and configs as needed
+- Remove deprecated or unused modules
+- Ensure all interfaces between components are consistent
+- Add any missing utilities or helper functions if required
+- Avoid leaving partially updated logic
+
+## Output Requirements
+
+After completing the modifications, provide:
+
+1. A summary of fixes:
+   - What errors were found and fixed
+2. Refactoring details:
+   - What handcrafted features were removed
+   - How URL n-gram embeddings are implemented and integrated
+   - How traffic data is adapted to Mamba-style embeddings
+3. List of modified files and reasons for each change
+4. Any remaining risks or assumptions
+5. Confirmation that the project can run (or clear explanation if something external is missing)
+
+## Working Principles
+- Prioritize correctness and completeness over minimal edits
+- Do not retain obsolete feature engineering code
+- Ensure all modifications are consistent across the project
+- Avoid superficial fixes; perform structural corrections where necessary
+- Keep changes relevant but comprehensive
+
+## Execution
+Start by analyzing the entire project structure, then proceed with systematic fixes and refactoring. Ensure the final codebase is clean, consistent, and runnable.

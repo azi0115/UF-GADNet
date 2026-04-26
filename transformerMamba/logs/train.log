@@ -1,0 +1,22 @@
+[2026-04-19 22:56:43][INFO][__main__] device=cuda train_samples=5000 val_samples=500
+[2026-04-19 22:56:48][INFO][__main__] epoch=1 train_loss=0.1681 val_loss=0.0205 val_auc=1.0000 val_f1=1.0000 threshold=0.06
+[2026-04-19 22:56:53][INFO][__main__] epoch=2 train_loss=0.0161 val_loss=0.0027 val_auc=1.0000 val_f1=1.0000 threshold=0.05
+[2026-04-19 22:56:57][INFO][__main__] epoch=3 train_loss=0.0048 val_loss=0.0014 val_auc=1.0000 val_f1=1.0000 threshold=0.05
+[2026-04-19 22:57:01][INFO][__main__] epoch=4 train_loss=0.0030 val_loss=0.0011 val_auc=1.0000 val_f1=1.0000 threshold=0.05
+[2026-04-19 22:57:01][INFO][__main__] early stopping at epoch 4
+[2026-04-19 22:57:01][INFO][__main__] best_auc=1.0000 best_epoch=1
+[2026-04-26 14:21:07][INFO][__main__] device=cuda train_samples=15999 val_samples=2001
+[2026-04-26 14:21:29][INFO][__main__] epoch=1 train_loss=0.2206 val_loss=0.1362 val_auc=0.9208 val_f1=0.8456 threshold=0.33
+[2026-04-26 14:21:51][INFO][__main__] epoch=2 train_loss=0.1411 val_loss=0.1124 val_auc=0.9484 val_f1=0.8876 threshold=0.35
+[2026-04-26 14:22:15][INFO][__main__] epoch=3 train_loss=0.1179 val_loss=0.0917 val_auc=0.9623 val_f1=0.9035 threshold=0.36
+[2026-04-26 14:22:37][INFO][__main__] epoch=4 train_loss=0.1043 val_loss=0.0864 val_auc=0.9668 val_f1=0.9098 threshold=0.43
+[2026-04-26 14:23:00][INFO][__main__] epoch=5 train_loss=0.0941 val_loss=0.0803 val_auc=0.9701 val_f1=0.9159 threshold=0.39
+[2026-04-26 14:23:23][INFO][__main__] epoch=6 train_loss=0.0864 val_loss=0.0807 val_auc=0.9722 val_f1=0.9158 threshold=0.31
+[2026-04-26 14:23:45][INFO][__main__] epoch=7 train_loss=0.0812 val_loss=0.0787 val_auc=0.9734 val_f1=0.9177 threshold=0.40
+[2026-04-26 14:24:06][INFO][__main__] epoch=8 train_loss=0.0790 val_loss=0.0771 val_auc=0.9747 val_f1=0.9219 threshold=0.38
+[2026-04-26 14:24:29][INFO][__main__] epoch=9 train_loss=0.0765 val_loss=0.0768 val_auc=0.9748 val_f1=0.9233 threshold=0.35
+[2026-04-26 14:24:50][INFO][__main__] epoch=10 train_loss=0.0743 val_loss=0.0763 val_auc=0.9751 val_f1=0.9236 threshold=0.36
+[2026-04-26 14:24:51][INFO][__main__] best_auc=0.9751 best_epoch=10
+[2026-04-26 14:36:09][INFO][__main__] device=cuda train_samples=15999 val_samples=2001
+[2026-04-26 14:40:46][INFO][__main__] device=cuda train_samples=15999 val_samples=2001
+[2026-04-26 14:57:12][INFO][__main__] device=cuda train_samples=15999 val_samples=2001

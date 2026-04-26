@@ -1,0 +1,156 @@
+You are a senior software engineer and technical documentation specialist. Please analyze the entire code project in the current directory and all subdirectories, then complete the following tasks under strict constraints.
+
+## Main Goals
+1. Generate a comprehensive technical documentation file for this code project.
+2. The documentation must be written in **Chinese**.
+3. The documentation must include:
+   - project directory tree
+   - functional structure description
+   - algorithm explanation
+   - execution sequence / call chain description
+4. Add explanatory comments/docstrings to every method/function in the codebase.
+5. All docstrings must use the **Google docstring style**.
+6. You are only allowed to add comments/docstrings and documentation. **Do not modify any business logic.**
+
+---
+
+## Strict Constraints
+- Do **not** change any business logic.
+- Do **not** refactor code behavior.
+- Do **not** change model logic, training logic, inference logic, data processing logic, or function signatures unless absolutely necessary to insert comments safely.
+- Do **not** rename functions, classes, variables, or files.
+- Do **not** delete any code.
+- Only add:
+  1. method/function/class docstrings
+  2. necessary inline explanatory comments
+  3. project documentation file(s)
+
+Your modifications must be documentation-only.
+
+---
+
+## Task Requirements
+
+### 1. Analyze the Entire Project
+Inspect all relevant files in the project, including but not limited to:
+- source code files
+- model files
+- dataset / preprocessing files
+- training scripts
+- inference / evaluation scripts
+- utility/helper modules
+- configuration-related files if they help explain the system
+
+You must understand:
+- the overall purpose of the project
+- the role of each module
+- the relationship between files and modules
+- the major execution entry points
+- the core algorithmic flow
+- the data flow and model flow
+- the call sequence between important components
+
+---
+
+### 2. Generate a Chinese Technical Documentation File
+Create a documentation file in the project, for example:
+- `项目功能结构与算法说明文档.md`
+or
+- `技术说明文档.md`
+
+The document must be written in **Chinese** and include at least the following sections:
+
+#### （1）项目概述
+- 项目的主要功能
+- 项目的目标和用途
+- 整体运行流程概览
+
+#### （2）项目目录树
+- Output a clear project directory tree
+- Show major folders and files
+- Briefly explain the role of important files/directories
+
+Example format:
+- project_root/
+  - data/
+  - models/
+  - utils/
+  - train.py
+  - infer.py
+
+#### （3）功能结构说明
+- Describe the responsibility of each major module
+- Explain how modules collaborate
+- Explain which files are entry points, core logic files, helper modules, etc.
+
+#### （4）算法说明
+- Explain the core algorithms or model logic used in the project
+- Explain key data processing logic
+- Explain important computation steps
+- If applicable, explain how inputs are transformed into outputs
+- Focus on real code behavior, not assumptions
+
+#### （5）时序流程 / 调用链说明
+This section is mandatory.
+It must include:
+- the execution order of the main workflow
+- the calling relationship between core modules/functions/classes
+- a step-by-step explanation of the main runtime process
+- training/inference/evaluation call chain if applicable
+
+You may describe this in structured text form such as:
+1. program entry
+2. configuration loading
+3. dataset loading
+4. preprocessing
+5. model construction
+6. forward computation
+7. loss computation / prediction output
+8. evaluation / saving / visualization
+
+Also explain which functions or classes call which downstream components.
+
+#### （6）核心类与核心方法说明
+- Summarize important classes and methods
+- Explain their responsibilities
+- Explain key inputs/outputs
+- Explain how they fit into the overall workflow
+
+#### （7）补充说明
+- unclear or ambiguous parts of the code
+- assumptions inferred from code structure
+- technical risks or maintenance concerns, if any
+
+---
+
+### 3. Add Google-Style Docstrings to Every Method / Function
+For every relevant function/method/class in the codebase:
+- add a clear and accurate docstring using **Google docstring style**
+- docstrings should explain:
+  - purpose
+  - Args
+  - Returns
+  - Raises (if clearly applicable)
+- if needed, also add short inline comments for complex internal steps
+
+Requirements:
+- Comments must be helpful and concise
+- Do not write redundant comments
+- Do not explain the code line-by-line unless necessary
+- Use a consistent style across the project
+- Base explanations on actual code behavior
+- If the code already has docstrings, improve them only if needed, while preserving logic
+
+Example style:
+
+```python
+def example_function(x, y):
+    """计算两个输入值的结果。
+
+    Args:
+        x: 第一个输入参数。
+        y: 第二个输入参数。
+
+    Returns:
+        返回计算后的结果。
+    """

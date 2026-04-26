@@ -1,0 +1,680 @@
+Please inspect and modify the current project code. Add a new “URL component position-aware n-gram vocabulary” feature to the existing URL n-gram vocabulary construction pipeline.
+
+The project is for phishing URL detection. The current code already generates URL n-gram tokens, builds a vocabulary, and trains/evaluates a model. The new feature must be added without breaking the existing baseline behavior.
+
+The main objective:
+
+Original vocabulary tokens may look like:
+
+    log
+    ogi
+    pay
+    com
+    id
+    =1
+
+The new position-aware vocabulary should generate tokens like:
+
+    SUBDOMAIN::log
+    DOMAIN::pay
+    TLD::com
+    PATH::aut
+    QUERY_KEY::id
+    QUERY_KEY+QUERY_VALUE::d=1
+    PATH+QUERY_KEY::h?i
+    DOMAIN+TLD::y.c
+
+In other words, the same n-gram appearing in different URL components must be treated as different tokens. If an n-gram crosses the boundary between two or more URL components, the token prefix must be the merged component class.
+
+==================================================
+1. Feature Switch and Configuration
+==================================================
+
+Add a new configuration flag:
+
+    use_position_ngram_vocab: bool = False
+
+Default must be False so that the original code behavior remains unchanged.
+
+When:
+
+    use_position_ngram_vocab = False
+
+the project must continue using the original plain URL n-gram vocabulary logic.
+
+When:
+
+    use_position_ngram_vocab = True
+
+the project must use the new position-aware URL n-gram vocabulary logic.
+
+Also add or support the following configuration options:
+
+    ngram_range = (1, 3)
+    position_granularity = "fine"
+    include_boundary_tokens = True
+    save_position_vocab_meta = True
+
+Meaning:
+
+    ngram_range defaults to 1-gram, 2-gram, and 3-gram.
+    position_granularity defaults to "fine".
+    include_boundary_tokens controls whether cross-component boundary n-grams are retained.
+    save_position_vocab_meta controls whether token metadata is saved.
+
+==================================================
+2. URL Component Classes
+==================================================
+
+Assign character-level component labels to the original URL using the following component classes:
+
+    SCHEME
+    SUBDOMAIN
+    DOMAIN
+    TLD
+    PORT
+    PATH
+    QUERY_KEY
+    QUERY_VALUE
+    FRAGMENT
+
+Example URL:
+
+    https://login.pay.com:443/auth?id=12&tk=ab#top
+
+Expected logical decomposition:
+
+    SCHEME      = https
+    SUBDOMAIN   = login
+    DOMAIN      = pay
+    TLD         = com
+    PORT        = 443
+    PATH        = auth
+    QUERY_KEY   = id, tk
+    QUERY_VALUE = 12, ab
+    FRAGMENT    = top
+
+Requirements:
+
+1. Do not lowercase the URL.
+2. Do not remove special characters.
+3. Do not remove characters such as `.`, `/`, `?`, `=`, `&`, `#`, `:`, `-`, `_`.
+4. Preserve case in path, query, and fragment.
+5. Missing fields must be handled safely.
+6. If precise public suffix parsing is not available, use a simple hostname split:
+   - the last segment is TLD
+   - the second-to-last segment is DOMAIN
+   - preceding segments are SUBDOMAIN
+7. If hostname has two segments, for example `pay.com`:
+   - DOMAIN = pay
+   - TLD = com
+   - SUBDOMAIN is empty
+8. If hostname has one segment, for example `localhost`:
+   - DOMAIN = localhost
+   - TLD is empty
+   - SUBDOMAIN is empty
+9. If host is an IP address, label the whole host as DOMAIN or HOST. Add a clear code comment explaining the chosen behavior.
+
+==================================================
+3. Boundary-Merged Component Class Rule
+==================================================
+
+This is the most important part of the modification.
+
+Do not generate n-grams independently from each URL component, because that loses boundary information.
+
+Correct approach:
+
+1. Build character-level position labels for the full original URL.
+2. Generate 1-gram, 2-gram, and 3-gram tokens by sliding over the full original URL.
+3. For each n-gram, inspect the component labels covered by its characters.
+4. If the n-gram belongs to only one component:
+
+       token = COMPONENT::ngram
+
+   Examples:
+
+       DOMAIN::pay
+       PATH::aut
+       QUERY_KEY::id
+
+5. If the n-gram crosses two or more components:
+
+       token = COMPONENT_A+COMPONENT_B::ngram
+
+   or:
+
+       token = COMPONENT_A+COMPONENT_B+COMPONENT_C::ngram
+
+   Examples:
+
+       DOMAIN+TLD::y.c
+       TLD+PORT::m:4
+       PORT+PATH::3/a
+       PATH+QUERY_KEY::h?i
+       QUERY_KEY+QUERY_VALUE::d=1
+       QUERY_VALUE+QUERY_KEY::2&t
+       QUERY_VALUE+FRAGMENT::b#t
+
+6. Component order in merged class must follow the order in which the components appear in the URL. Do not sort alphabetically.
+
+For example:
+
+    QUERY_VALUE+QUERY_KEY::2&t
+
+must not become:
+
+    QUERY_KEY+QUERY_VALUE::2&t
+
+because the actual URL order is value to key.
+
+==================================================
+4. Separator Handling
+==================================================
+
+URL separators must be retained, including:
+
+    ://
+    .
+    :
+    /
+    ?
+    =
+    &
+    #
+
+Recommended implementation:
+
+1. Label normal characters with their URL component.
+2. Label separator characters according to the components they connect.
+3. When an n-gram window covers multiple labels, use the merged component class.
+
+Examples:
+
+For URL substring:
+
+    pay.com
+
+Approximate character labels:
+
+    p a y . c o m
+    DOMAIN DOMAIN DOMAIN DOMAIN+TLD TLD TLD TLD
+
+Generated 3-grams:
+
+    pay  -> DOMAIN::pay
+    ay.  -> DOMAIN+TLD::ay.
+    y.c  -> DOMAIN+TLD::y.c
+    .co  -> DOMAIN+TLD::.co
+    com  -> TLD::com
+
+For URL substring:
+
+    auth?id
+
+Generated 3-grams:
+
+    aut  -> PATH::aut
+    uth  -> PATH::uth
+    th?  -> PATH+QUERY_KEY::th?
+    h?i  -> PATH+QUERY_KEY::h?i
+    ?id  -> PATH+QUERY_KEY::?id
+
+For URL substring:
+
+    id=12
+
+Generated 3-grams:
+
+    id=  -> QUERY_KEY+QUERY_VALUE::id=
+    d=1  -> QUERY_KEY+QUERY_VALUE::d=1
+    =12  -> QUERY_KEY+QUERY_VALUE::=12
+
+For URL substring:
+
+    12&tk
+
+Generated 3-grams:
+
+    12&  -> QUERY_VALUE+QUERY_KEY::12&
+    2&t  -> QUERY_VALUE+QUERY_KEY::2&t
+    &tk  -> QUERY_VALUE+QUERY_KEY::&tk
+
+For URL substring:
+
+    ab#top
+
+Generated 3-grams:
+
+    ab#  -> QUERY_VALUE+FRAGMENT::ab#
+    b#t  -> QUERY_VALUE+FRAGMENT::b#t
+    #to  -> QUERY_VALUE+FRAGMENT::#to
+    top  -> FRAGMENT::top
+
+==================================================
+5. Functions to Add or Modify
+==================================================
+
+First inspect the existing code and locate the current URL n-gram generation, vocabulary construction, Dataset/tokenizer, training entry point, and testing/evaluation entry point.
+
+Add the following functions or equivalent functions following the project’s existing code style.
+
+--------------------------------------------------
+5.1 parse_url_to_char_labels
+--------------------------------------------------
+
+Suggested signature:
+
+    parse_url_to_char_labels(
+        url: str,
+        granularity: str = "fine"
+    ) -> List[Tuple[str, str]]
+
+Purpose:
+
+    Input:
+        raw URL string
+
+    Output:
+        a list aligned one-to-one with the original URL characters.
+
+Each element should contain:
+
+    character
+    position_label
+
+Example output structure:
+
+    [
+      ("h", "SCHEME"),
+      ("t", "SCHEME"),
+      ...
+      ("?", "PATH+QUERY_KEY"),
+      ("i", "QUERY_KEY"),
+      ("d", "QUERY_KEY"),
+      ("=", "QUERY_KEY+QUERY_VALUE"),
+      ("1", "QUERY_VALUE"),
+      ...
+    ]
+
+Critical requirements:
+
+    Output length must equal len(url).
+    Do not lose or insert characters.
+    Do not crash if URL parsing fails.
+    If parsing is ambiguous, fall back to a safe labeling strategy and log a warning if appropriate.
+
+--------------------------------------------------
+5.2 get_position_class
+--------------------------------------------------
+
+Suggested signature:
+
+    get_position_class(labels: List[str]) -> str
+
+Purpose:
+
+    Input:
+        the character-level labels covered by an n-gram window
+
+    Output:
+        the merged position class
+
+Rules:
+
+    - Deduplicate labels.
+    - Preserve URL order.
+    - If a label is already merged, such as A+B, expand it first and then merge.
+    - Avoid duplicated components.
+
+Examples:
+
+    ["PATH", "PATH+QUERY_KEY", "QUERY_KEY"]
+        -> "PATH+QUERY_KEY"
+
+    ["QUERY_KEY", "QUERY_KEY+QUERY_VALUE", "QUERY_VALUE"]
+        -> "QUERY_KEY+QUERY_VALUE"
+
+    ["DOMAIN", "DOMAIN+TLD", "TLD"]
+        -> "DOMAIN+TLD"
+
+--------------------------------------------------
+5.3 generate_position_ngrams
+--------------------------------------------------
+
+Suggested signature:
+
+    generate_position_ngrams(
+        url: str,
+        ngram_range=(1, 3),
+        granularity: str = "fine",
+        include_boundary_tokens: bool = True
+    ) -> List[str]
+
+Purpose:
+
+    Generate position-aware n-gram tokens from the full original URL.
+
+Example output should include tokens such as:
+
+    [
+      "SCHEME::h",
+      "SCHEME::ht",
+      "SCHEME::htt",
+      "SUBDOMAIN::log",
+      "SUBDOMAIN+DOMAIN::n.p",
+      "DOMAIN::pay",
+      "DOMAIN+TLD::y.c",
+      "TLD::com",
+      "TLD+PORT::m:4",
+      "PORT::443",
+      "PORT+PATH::3/a",
+      "PATH::aut",
+      "PATH+QUERY_KEY::h?i",
+      "QUERY_KEY::id",
+      "QUERY_KEY+QUERY_VALUE::d=1",
+      "QUERY_VALUE::12",
+      "QUERY_VALUE+QUERY_KEY::2&t",
+      "QUERY_KEY::tk",
+      "QUERY_KEY+QUERY_VALUE::k=a",
+      "QUERY_VALUE::ab",
+      "QUERY_VALUE+FRAGMENT::b#t",
+      "FRAGMENT::top"
+    ]
+
+If include_boundary_tokens is False, skip tokens whose position class contains `+`.
+
+--------------------------------------------------
+5.4 build_position_ngram_vocab
+--------------------------------------------------
+
+Suggested signature can follow the existing project style.
+
+Purpose:
+
+    Build the position-aware vocabulary from training URLs only.
+
+It must collect:
+
+    token frequency
+    document frequency
+    position class frequency
+    n-gram length frequency
+
+Requirements:
+
+    - Preserve existing special tokens such as <PAD> and <UNK>.
+    - Support existing min_freq.
+    - Support existing max_vocab_size.
+    - Use only the training set to build the vocabulary.
+    - Validation and test sets must reuse the training vocabulary.
+    - Do not leak validation or test URLs into vocab construction.
+
+--------------------------------------------------
+5.5 encode_url_with_position_vocab
+--------------------------------------------------
+
+Suggested signature:
+
+    encode_url_with_position_vocab(
+        url: str,
+        token2id: Dict[str, int],
+        max_len: int,
+        ngram_range=(1, 3),
+        granularity: str = "fine",
+        include_boundary_tokens: bool = True
+    )
+
+Purpose:
+
+    Encode one raw URL into token ids using the position-aware vocabulary.
+
+Requirements:
+
+    - OOV tokens map to <UNK>.
+    - Use padding for shorter sequences.
+    - Use truncation for longer sequences.
+    - Output format must remain compatible with the current Dataset/model input format, such as input_ids, attention_mask, or the existing fields.
+
+==================================================
+6. Vocabulary Saving Format
+==================================================
+
+When use_position_ngram_vocab=True, save two files if consistent with the project style.
+
+--------------------------------------------------
+6.1 token2id file
+--------------------------------------------------
+
+Example:
+
+    {
+      "<PAD>": 0,
+      "<UNK>": 1,
+      "SCHEME::h": 2,
+      "SCHEME::ht": 3,
+      "SUBDOMAIN::log": 4,
+      "DOMAIN::pay": 5,
+      "DOMAIN+TLD::y.c": 6
+    }
+
+--------------------------------------------------
+6.2 vocab_meta file
+--------------------------------------------------
+
+Save as JSON or CSV, depending on the existing project convention.
+
+Each record should contain at least:
+
+    token
+    token_id
+    position
+    ngram
+    ngram_len
+    count
+    df
+
+Example:
+
+    {
+      "token": "DOMAIN+TLD::y.c",
+      "token_id": 1024,
+      "position": "DOMAIN+TLD",
+      "ngram": "y.c",
+      "ngram_len": 3,
+      "count": 87,
+      "df": 60
+    }
+
+Requirements:
+
+    - Loading old vocabularies must not crash.
+    - If an old checkpoint is incompatible with the position-aware vocabulary, log a clear message:
+      "The vocabulary structure has changed. This checkpoint is incompatible and the model must be retrained."
+    - Do not silently load an incompatible checkpoint.
+
+==================================================
+7. Training, Validation, and Test Flow
+==================================================
+
+Ensure the following scripts or entry points still work:
+
+    train
+    validation
+    test
+    evaluate_test.py
+
+Requirements:
+
+1. When use_position_ngram_vocab=False, all behavior must remain identical to the original code.
+2. When use_position_ngram_vocab=True, the training stage builds the position-aware vocabulary.
+3. Validation and test stages must load the position-aware vocabulary saved during training.
+4. Validation and test must never rebuild the vocabulary.
+5. If the position-aware vocabulary file is missing during validation/test, raise a clear error.
+6. Log the following:
+   - whether position-aware vocabulary is enabled
+   - ngram_range
+   - vocabulary size
+   - number of tokens per position class
+   - number of tokens per n-gram length
+   - position-aware tokenization examples for the first 3 URLs
+
+==================================================
+8. Debug Example / Test Case
+==================================================
+
+Add a simple debug function, unit test, or script-level test case for:
+
+    https://login.pay.com:443/auth?id=12&tk=ab#top
+
+The output should include tokens similar to:
+
+    SCHEME::h
+    SCHEME::ht
+    SCHEME::htt
+
+    SUBDOMAIN::l
+    SUBDOMAIN::lo
+    SUBDOMAIN::log
+
+    SUBDOMAIN+DOMAIN::n.
+    SUBDOMAIN+DOMAIN::n.p
+    SUBDOMAIN+DOMAIN::.pa
+
+    DOMAIN::p
+    DOMAIN::pa
+    DOMAIN::pay
+
+    DOMAIN+TLD::y.
+    DOMAIN+TLD::y.c
+    DOMAIN+TLD::.co
+
+    TLD::c
+    TLD::co
+    TLD::com
+
+    TLD+PORT::m:
+    TLD+PORT::m:4
+    TLD+PORT:::44
+
+    PORT::4
+    PORT::44
+    PORT::443
+
+    PORT+PATH::3/
+    PORT+PATH::3/a
+    PORT+PATH::/au
+
+    PATH::a
+    PATH::au
+    PATH::aut
+
+    PATH+QUERY_KEY::h?
+    PATH+QUERY_KEY::h?i
+    PATH+QUERY_KEY::?id
+
+    QUERY_KEY::i
+    QUERY_KEY::id
+
+    QUERY_KEY+QUERY_VALUE::d=
+    QUERY_KEY+QUERY_VALUE::d=1
+    QUERY_KEY+QUERY_VALUE::=12
+
+    QUERY_VALUE::1
+    QUERY_VALUE::12
+
+    QUERY_VALUE+QUERY_KEY::2&
+    QUERY_VALUE+QUERY_KEY::2&t
+    QUERY_VALUE+QUERY_KEY::&tk
+
+    QUERY_KEY::t
+    QUERY_KEY::tk
+
+    QUERY_KEY+QUERY_VALUE::k=
+    QUERY_KEY+QUERY_VALUE::k=a
+    QUERY_KEY+QUERY_VALUE::=ab
+
+    QUERY_VALUE::a
+    QUERY_VALUE::ab
+
+    QUERY_VALUE+FRAGMENT::b#
+    QUERY_VALUE+FRAGMENT::b#t
+    QUERY_VALUE+FRAGMENT::#to
+
+    FRAGMENT::t
+    FRAGMENT::to
+    FRAGMENT::top
+
+The exact number of tokens may be larger because 1-gram, 2-gram, and 3-gram are all generated. However, both single-component tokens and boundary-merged tokens must appear.
+
+==================================================
+9. Code Constraints
+==================================================
+
+Strictly follow these constraints:
+
+1. Do not remove the original plain n-gram logic.
+2. Do not change the default baseline behavior.
+3. Do not rewrite the main model architecture.
+4. Do not change model forward unless absolutely required by vocabulary size or input compatibility.
+5. Dataset output fields must remain compatible with the existing model.
+6. Do not change train/validation/test split logic.
+7. Do not use validation or test data to build the vocabulary.
+8. All new behavior must be controlled by use_position_ngram_vocab.
+9. Add necessary comments explaining the position-aware n-gram design.
+10. Be robust to abnormal URLs, including:
+    - no scheme
+    - no path
+    - no query
+    - multiple query parameters
+    - empty query value
+    - IP address host
+    - localhost
+    - uppercase letters
+    - percent-encoding
+    - hyphen, underscore, digits, and special characters
+
+==================================================
+10. Ablation Experiments Must Be Supported
+==================================================
+
+The modified code should make it easy to run the following experiments:
+
+1. Plain URL n-gram baseline:
+
+    use_position_ngram_vocab=False
+
+2. Position-aware URL n-gram:
+
+    use_position_ngram_vocab=True
+    ngram_range=(1, 3)
+
+3. Position-aware URL n-gram + traffic branch:
+
+    use_position_ngram_vocab=True
+    use_traffic=True
+
+The goal is to compare:
+
+    A. original URL-only baseline
+    B. plain n-gram URL-only
+    C. position-aware n-gram URL-only
+    D. position-aware n-gram URL + traffic
+
+==================================================
+11. Final Response Requirements
+==================================================
+
+After modifying the code, please report:
+
+1. Which files were modified.
+2. Which functions or classes were added.
+3. Which configuration parameters were added.
+4. How to enable the position-aware n-gram vocabulary.
+5. How to run training.
+6. How to run testing.
+7. An example output of position-aware tokenization for the sample URL.
+8. Whether the new vocabulary is compatible with old checkpoints. If not, explain why.
+9. Confirm whether use_position_ngram_vocab=False preserves the original behavior.
+
+Please write the final explanation in Chinese.
