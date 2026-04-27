@@ -273,16 +273,31 @@ def save_checkpoint(
         epoch: 当前 epoch 编号。
     """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    checkpoint_vocabs = {key: value for key, value in vocabs.items() if key != "__meta_records__"}
     payload = {
         "epoch": epoch,
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
         "config": config.to_dict() if hasattr(config, "to_dict") else dict(config),
         "metrics": {key: value for key, value in metrics.items() if key not in {"labels", "probs", "preds"}},
-        "vocabs": checkpoint_vocabs,
+        # URL vocabulary is already persisted to config.vocab_path.
+        # Keeping it out of the .pt checkpoint avoids multi-GB checkpoint files.
     }
-    torch.save(payload, path)
+    temp_path = f"{path}.tmp"
+    try:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        torch.save(payload, temp_path)
+        os.replace(temp_path, path)
+    except Exception as exc:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        raise RuntimeError(
+            f"Failed to save checkpoint to '{path}'. "
+            "This is often caused by the target file being locked, the disk being full, or the existing checkpoint being too large."
+        ) from exc
 
 
 def load_checkpoint(path: str, device: torch.device | str = "cpu") -> Dict[str, Any]:
