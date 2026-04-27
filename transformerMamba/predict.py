@@ -1,4 +1,4 @@
-"""模型推理入口脚本。"""
+"""Model prediction entrypoint."""
 
 from __future__ import annotations
 
@@ -32,11 +32,6 @@ PHISH_TYPE_NAMES = {
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行推理参数。
-
-    Returns:
-        argparse.Namespace: 推理所需参数集合。
-    """
     parser = argparse.ArgumentParser(
         description="Run phishing predictions from a checkpoint",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -55,28 +50,12 @@ def load_model_bundle(
     model_path: str,
     device: torch.device,
 ) -> tuple[PhishingDetector, PhishingConfig, Dict[str, Dict[str, int]], float]:
-    """加载 checkpoint 中的模型、配置、词表和默认阈值。
-
-    Args:
-        model_path: checkpoint 文件路径。
-        device: 模型加载目标设备。
-
-    Returns:
-        tuple[PhishingDetector, PhishingConfig, Dict[str, Dict[str, int]], float]:
-            已加载的模型、配置对象、词表与默认分类阈值。
-    """
     checkpoint = load_checkpoint(model_path, device)
     config = PhishingConfig.from_dict(checkpoint["config"])
     model = PhishingDetector(config).to(device)
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
     threshold = float(checkpoint.get("metrics", {}).get("threshold", 0.5))
-    if getattr(config, "use_position_ngram_vocab", False):
-        logger.info(
-            "Position-aware vocabulary is enabled | ngram_range=%s | include_boundary_tokens=%s",
-            config.ngram_range,
-            config.include_boundary_tokens,
-        )
     vocabs = load_vocab_for_runtime(config, checkpoint.get("vocabs"))
     logger.info(
         "loaded vocab sizes | 1gram=%d | 2gram=%d | 3gram=%d",
@@ -84,12 +63,6 @@ def load_model_bundle(
         len(vocabs["2gram"]),
         len(vocabs["3gram"]),
     )
-    metadata = vocabs.get("__metadata__", {})
-    if getattr(config, "use_position_ngram_vocab", False):
-        logger.info("position class counts: %s", metadata.get("position_class_frequency", {}))
-        logger.info("n-gram length counts: %s", metadata.get("ngram_length_frequency", {}))
-        for sample in metadata.get("sample_examples", [])[:3]:
-            logger.info("position-aware tokenization example | url=%s | tokens=%s", sample["url"], sample["tokens"])
     return model, config, vocabs, threshold
 
 
@@ -102,20 +75,6 @@ def predict_records(
     threshold: float,
     batch_size: int,
 ) -> List[Dict[str, Any]]:
-    """对单条或多条记录执行批量推理。
-
-    Args:
-        model: 已加载权重的模型。
-        config: checkpoint 中恢复的配置对象。
-        vocabs: URL n-gram 词表集合。
-        records: 待预测样本列表。
-        device: 推理设备。
-        threshold: 分类判定阈值。
-        batch_size: 推理分批大小。
-
-    Returns:
-        List[Dict[str, Any]]: 与输入样本一一对应的预测结果列表。
-    """
     results = []
     effective_batch_size = max(int(batch_size), 1)
 
@@ -165,11 +124,6 @@ def predict_records(
 
 
 def main() -> None:
-    """执行命令行推理主流程。
-
-    Raises:
-        ValueError: 当用户同时传入或同时缺失 ``--url`` 与 ``--input_file`` 时抛出。
-    """
     args = parse_args()
     setup_logging("logs", "predict")
     device = get_device(args.device)
@@ -180,9 +134,9 @@ def main() -> None:
     model, config, vocabs, default_threshold = load_model_bundle(args.model_path, device)
     threshold = args.threshold if args.threshold is not None else default_threshold
     batch_size = args.batch_size if args.batch_size is not None else config.predict_batch_size
-
-    # 单条 URL 推理会自动补充空流量序列，批量模式则直接读取样本文件。
     records = [{"url": args.url, "traffic": []}] if args.url else load_records(args.input_file)
+    logger.info("Traffic input mode: %s", getattr(config, "traffic_input_mode", "raw_sequence"))
+    logger.info("Using TrafficMambaEncoder=%s", getattr(config, "use_traffic", True))
     results = predict_records(model, config, vocabs, records, device, threshold, batch_size)
 
     if args.input_file:

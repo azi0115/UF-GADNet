@@ -1,4 +1,4 @@
-"""数据集与模型输入输出的基础测试。"""
+"""Dataset and model smoke tests."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
 torch = pytest.importorskip("torch")
 
 from config import PhishingConfig
@@ -21,45 +22,36 @@ from dataset import (
 from models import PhishingDetector
 
 
-def _make_sample(label: int = 0) -> dict:
-    """构造最小可用测试样本。
-
-    Args:
-        label: 样本标签。
-
-    Returns:
-        dict: 含 URL、流量与标签字段的样本字典。
-    """
+def _make_sample(label: int = 0, suffix: str = "") -> dict:
+    base = 0.01 if label else 0.02
     return {
-        "url": "https://example.com/login" if label else "https://github.com/openai",
+        "url": f"https://example{suffix}.com/login" if label else f"https://github{suffix}.com/openai",
         "label": label,
         "phish_type": label,
         "risk_score": 0.8 if label else 0.1,
-        "traffic": [[0.01, 120.0], [0.02, 250.0], [0.03, 512.0]],
+        "traffic": [
+            [base, 64.0 + 10 * label],
+            [base + 0.01, 128.0 + 20 * label],
+            [base + 0.03, 512.0 + 30 * label],
+            [base + 0.08, 256.0 + 10 * label],
+            [base + 0.12, 1024.0 + 10 * label],
+        ],
     }
-
 
 @pytest.fixture()
 def sample_file() -> Path:
-    """生成临时样本文件供测试用例复用。
-
-    Returns:
-        Path: 临时 JSON 文件路径。
-    """
-    samples = [_make_sample(label=index % 2) for index in range(8)]
+    samples = [_make_sample(label=index % 2, suffix=str(index)) for index in range(8)]
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
         json.dump(samples, handle)
         return Path(handle.name)
 
 
 def test_load_records(sample_file: Path) -> None:
-    """验证样本文件能够被完整加载。"""
     records = load_records(str(sample_file))
     assert len(records) == 8
 
 
 def test_dataset_item(sample_file: Path) -> None:
-    """验证数据集单样本编码结果的结构与类型。"""
     config = PhishingConfig()
     records = load_records(str(sample_file))
     vocabs = build_url_vocabs((item["url"] for item in records), config)
@@ -73,7 +65,6 @@ def test_dataset_item(sample_file: Path) -> None:
 
 
 def test_collate_fn_shapes(sample_file: Path) -> None:
-    """验证批处理拼装后的张量形状与掩码类型。"""
     config = PhishingConfig()
     records = load_records(str(sample_file))
     vocabs = build_url_vocabs((item["url"] for item in records), config)
@@ -87,8 +78,7 @@ def test_collate_fn_shapes(sample_file: Path) -> None:
     assert batch["traffic_mask"].dtype == torch.bool
 
 
-def test_model_forward(sample_file: Path) -> None:
-    """验证模型前向传播的输出形状。"""
+def test_model_forward_raw_sequence(sample_file: Path) -> None:
     config = PhishingConfig(batch_size=2)
     records = load_records(str(sample_file))
     vocabs = build_url_vocabs((item["url"] for item in records), config)

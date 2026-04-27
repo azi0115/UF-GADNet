@@ -783,12 +783,10 @@ def collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     ids_2 = pad_sequence([item["ids_2gram"] for item in batch], batch_first=True, padding_value=PAD_ID)
     ids_3 = pad_sequence([item["ids_3gram"] for item in batch], batch_first=True, padding_value=PAD_ID)
     traffic = pad_sequence([item["traffic"] for item in batch], batch_first=True, padding_value=0.0)
-
     url_mask = ids_1.ne(PAD_ID)
     traffic_mask = torch.zeros(traffic.size(0), traffic.size(1), dtype=torch.bool)
     for index, item in enumerate(batch):
         traffic_mask[index, : item["traffic"].size(0)] = True
-
     return {
         "ids_1gram": ids_1,
         "ids_2gram": ids_2,

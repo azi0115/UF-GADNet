@@ -1,4 +1,4 @@
-"""模型评估入口脚本。"""
+"""Model evaluation entrypoint."""
 
 from __future__ import annotations
 
@@ -16,11 +16,6 @@ __test__ = False
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行评估参数。
-
-    Returns:
-        argparse.Namespace: 评估阶段所需参数集合。
-    """
     parser = argparse.ArgumentParser(
         description="Evaluate a saved phishing detector checkpoint",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -34,9 +29,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """执行测试集评估主流程。"""
     args = parse_args()
     setup_logging("logs", "evaluate_test")
+    logger.info(
+        "Starting evaluation | model_path=%s | test_path=%s | output_file=%s | device=%s",
+        args.model_path,
+        args.test_path,
+        args.output_file,
+        args.device,
+    )
     device = get_device(args.device)
 
     checkpoint = load_checkpoint(args.model_path, device)
@@ -47,12 +48,8 @@ def main() -> None:
     model.load_state_dict(checkpoint["model_state"])
     criterion = build_criterion(config)
     records = load_records(args.test_path)
-    if getattr(config, "use_position_ngram_vocab", False):
-        logger.info(
-            "Position-aware vocabulary is enabled | ngram_range=%s | include_boundary_tokens=%s",
-            config.ngram_range,
-            config.include_boundary_tokens,
-        )
+    logger.info("Traffic input mode: %s", getattr(config, "traffic_input_mode", "raw_sequence"))
+    logger.info("Using TrafficMambaEncoder=%s", getattr(config, "use_traffic", True))
     vocabs = load_vocab_for_runtime(config, checkpoint.get("vocabs"))
     logger.info(
         "loaded vocab sizes | 1gram=%d | 2gram=%d | 3gram=%d",
@@ -60,15 +57,7 @@ def main() -> None:
         len(vocabs["2gram"]),
         len(vocabs["3gram"]),
     )
-    metadata = vocabs.get("__metadata__", {})
-    if getattr(config, "use_position_ngram_vocab", False):
-        logger.info("position class counts: %s", metadata.get("position_class_frequency", {}))
-        logger.info("n-gram length counts: %s", metadata.get("ngram_length_frequency", {}))
-        for sample in metadata.get("sample_examples", [])[:3]:
-            logger.info("position-aware tokenization example | url=%s | tokens=%s", sample["url"], sample["tokens"])
     dataloader = build_dataloader(records, config, vocabs, shuffle=False)
-
-    # 默认沿用 checkpoint 中保存的阈值，也支持命令行显式覆盖。
     threshold = args.threshold if args.threshold is not None else float(checkpoint.get("metrics", {}).get("threshold", 0.5))
     metrics = evaluate(
         model,
@@ -80,6 +69,15 @@ def main() -> None:
     )
     save_json(args.output_file, {key: value for key, value in metrics.items() if key not in {"labels", "probs", "preds"}})
     logger.info("saved evaluation metrics to %s", args.output_file)
+    logger.info(
+        "evaluation summary | accuracy=%.4f | precision=%.4f | recall=%.4f | f1=%.4f | auc=%.4f | threshold=%.2f",
+        metrics["accuracy"],
+        metrics["precision"],
+        metrics["recall"],
+        metrics["f1"],
+        metrics["auc"],
+        metrics["threshold"],
+    )
     print(
         f"accuracy={metrics['accuracy']:.4f}\n"
         f"precision={metrics['precision']:.4f}\n"

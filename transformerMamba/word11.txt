@@ -1,0 +1,376 @@
+你现在需要基于当前项目代码，对钓鱼网站检测模型的跨模态融合模块和流量分支使用方式进行结构优化。请先完整阅读项目中与模型相关的代码，重点关注以下文件和类：
+
+1. models/fusion.py
+   - GateCrossModalFusion
+
+2. models/model.py 或顶层模型文件
+   - PhishingDetector
+
+3. models/traffic_encoder.py
+   - TrafficMambaEncoder
+   - MambaStyleBlock
+   - TrafficFeatureMLP
+
+4. models/url_encoder.py
+   - URLTransformerEncoder
+   - NGramEmbedding
+
+5. train.py / utils.py / evaluate 相关逻辑
+   - 注意训练、验证、诊断信息是否兼容修改后的输出
+
+本次任务不是重写整个模型，而是在保持现有训练流程、数据接口和输出字段基本兼容的前提下，对模型结构做稳定优化。
+
+请完成以下修改。
+
+==================================================
+一、修复 fusion.py 中的明确代码错误
+==================================================
+
+当前 GateCrossModalFusion 的 get_last_gate_stats() 方法最后返回值写错了：
+
+return self._last_gate_statsz
+
+这是错误字段，会导致调用诊断接口时报 AttributeError。
+
+请修复为：
+
+return self._last_gate_stats
+
+并确保该方法在未执行 forward 前返回 None，在执行带诊断的 forward 后返回最近一次 gate 统计信息。
+
+==================================================
+二、优化 GateCrossModalFusion 的 gate 统计逻辑
+==================================================
+
+当前 forward() 中每次都会执行 _summarize_gate(gate)，其中包含多次 .item() 操作。如果在 GPU 训练时每个 batch 都执行，会造成 GPU 到 CPU 的同步，影响训练速度。
+
+请修改为：
+
+1. 只有 return_gate_stats=True 时才计算 gate_stats。
+2. 只有 return_gate_stats=True 时才更新 self._last_gate_stats。
+3. return_gate_stats=False 时不要执行任何 .item() 或 CPU 同步操作。
+
+保持 forward() 返回格式兼容：
+
+- return_gate_stats=False：
+  返回 fused_output tensor
+
+- return_gate_stats=True：
+  返回 (fused_output, gate_stats)
+
+==================================================
+三、增强 GateCrossModalFusion 的结构表达能力
+==================================================
+
+当前融合逻辑为：
+
+url_state = self.url_proj(url_repr)
+traffic_state = self.traffic_proj(traffic_repr)
+gate = self.gate(torch.cat([url_state, traffic_state], dim=-1))
+fused = gate * url_state + (1 - gate) * traffic_state
+interaction = url_state * traffic_state
+output = self.output(torch.cat([fused, interaction], dim=-1))
+
+这个结构存在以下问题：
+
+1. output 没有显式保留 url_state 和 traffic_state 原始模态信息。
+2. gate 只看 url_state 和 traffic_state，没有利用模态差异项和交互项。
+3. interaction = url_state * traffic_state 默认两个模态已经语义对齐，但当前缺少 LayerNorm 稳定尺度。
+4. 如果 gate 早期偏向 URL，流量分支容易被压制。
+
+请将 GateCrossModalFusion 改为更稳的结构：
+
+1. url_proj 改为 Linear + LayerNorm。
+2. traffic_proj 改为 Linear + LayerNorm。
+3. 计算：
+   - diff = abs(url_state - traffic_state)
+   - interaction = url_state * traffic_state
+4. gate 的输入改为：
+   torch.cat([url_state, traffic_state, diff, interaction], dim=-1)
+5. fused 仍然使用：
+   fused = gate * url_state + (1.0 - gate) * traffic_state
+6. output 的输入改为：
+   torch.cat([url_state, traffic_state, fused, diff, interaction], dim=-1)
+
+注意相应调整 Linear 输入维度：
+
+- gate 第一层输入维度应为 hidden_dim * 4
+- output 第一层输入维度应为 hidden_dim * 5
+
+建议结构如下，但请根据项目代码风格做适配：
+
+class GateCrossModalFusion(nn.Module):
+    def __init__(...):
+        self.url_proj = nn.Sequential(
+            nn.Linear(url_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+        )
+        self.traffic_proj = nn.Sequential(
+            nn.Linear(traffic_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+        )
+
+        self.gate = nn.Sequential(
+            nn.Linear(hidden_dim * 4, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Sigmoid(),
+        )
+
+        self.output = nn.Sequential(
+            nn.Linear(hidden_dim * 5, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+        )
+
+==================================================
+四、扩展 gate 诊断信息
+==================================================
+
+当前 gate 统计只有 mean/min/max/url_weight_mean/traffic_weight_mean，信息较少。
+
+请扩展 _summarize_gate(gate)，至少返回：
+
+1. gate_mean
+2. gate_std
+3. gate_min
+4. gate_max
+5. url_weight_mean
+6. traffic_weight_mean
+7. gate_lt_0_1_ratio
+8. gate_gt_0_9_ratio
+9. sample_gate_mean_min
+10. sample_gate_mean_max
+
+其中：
+
+- gate_lt_0_1_ratio 表示 gate 小于 0.1 的比例
+- gate_gt_0_9_ratio 表示 gate 大于 0.9 的比例
+- sample_gate_mean_min 表示 batch 内样本级 gate 均值的最小值
+- sample_gate_mean_max 表示 batch 内样本级 gate 均值的最大值
+
+示例逻辑：
+
+gate_detached = gate.detach()
+sample_mean = gate_detached.mean(dim=-1)
+
+return {
+    "gate_mean": float(gate_detached.mean().item()),
+    "gate_std": float(gate_detached.std().item()),
+    "gate_min": float(gate_detached.min().item()),
+    "gate_max": float(gate_detached.max().item()),
+    "url_weight_mean": float(gate_detached.mean().item()),
+    "traffic_weight_mean": float((1.0 - gate_detached).mean().item()),
+    "gate_lt_0_1_ratio": float((gate_detached < 0.1).float().mean().item()),
+    "gate_gt_0_9_ratio": float((gate_detached > 0.9).float().mean().item()),
+    "sample_gate_mean_min": float(sample_mean.min().item()),
+    "sample_gate_mean_max": float(sample_mean.max().item()),
+}
+
+==================================================
+五、检查并调整 TOP30 流量特征分支的缩放问题
+==================================================
+
+在 PhishingDetector 中，如果 traffic_input_mode == TOP30_EXTRACTED_STATS_MODE，当前代码会创建：
+
+self.traffic_branch_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))
+
+并在 forward 中执行：
+
+traffic_repr = self.traffic_branch_scale * traffic_repr
+
+这个 0.1 的初始缩放可能会让 30 个流量统计特征分支在训练早期被严重削弱，导致 URL 分支压制流量分支。
+
+请做如下修改：
+
+1. 将 traffic_branch_scale 的初始值从 0.1 改为 1.0；
+2. 或者通过 config 增加一个参数，例如 traffic_branch_scale_init，默认值为 1.0；
+3. 保持旧配置不报错；
+4. 如果 config 中没有该字段，则默认使用 1.0；
+5. 日志中打印当前 traffic_branch_scale 初始值，方便实验对比。
+
+示例：
+
+scale_init = float(getattr(config, "traffic_branch_scale_init", 1.0))
+self.traffic_branch_scale = nn.Parameter(torch.tensor(scale_init, dtype=torch.float32))
+
+注意：不要直接删除这个参数，因为后续可能还需要做可学习缩放消融实验。
+
+==================================================
+六、修复 TrafficMambaEncoder / MambaStyleBlock 中 padding 残留问题
+==================================================
+
+当前 MambaStyleBlock 中只对 outputs 做了 mask：
+
+outputs = outputs * mask.unsqueeze(-1)
+return residual + outputs
+
+这样 padding 位置的 residual 仍然会保留下来。多层堆叠后，padding 状态可能影响表示。
+
+请改为：
+
+result = residual + outputs
+if mask is not None:
+    result = result * mask.unsqueeze(-1)
+return result
+
+同时检查 TrafficMambaEncoder 中加入 position embedding 后是否需要对无效位置做 mask。建议在构造 full_mask 后，至少在 block 输出后确保 padding 位置为 0。
+
+注意 CLS token 的 mask 应保持为 True，不要错误清除 CLS。
+
+==================================================
+七、增强 TrafficMambaEncoder 的全局池化能力
+==================================================
+
+当前 TrafficMambaEncoder 直接返回：
+
+return sequence[:, 0], sequence[:, 1:]
+
+但 MambaStyleBlock 更接近局部卷积建模，不是真正的全局 attention。CLS token 未必能充分聚合完整流量序列信息。
+
+请增加可选的 masked pooling 机制，让全局流量表示同时包含：
+
+1. CLS 表示
+2. masked mean pooling 表示
+
+建议实现方式：
+
+1. 在 __init__ 中增加：
+
+self.pool_proj = nn.Sequential(
+    nn.Linear(embed_dim * 2, embed_dim),
+    nn.GELU(),
+    nn.LayerNorm(embed_dim),
+)
+
+2. 在 forward 末尾：
+
+traffic_sequence = sequence[:, 1:]
+mask = traffic_mask.unsqueeze(-1).float()
+pooled = (traffic_sequence * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
+global_repr = self.pool_proj(torch.cat([sequence[:, 0], pooled], dim=-1))
+
+return global_repr, traffic_sequence
+
+注意：
+
+- TOP30 模式使用 TrafficFeatureMLP，不受这个修改影响。
+- 原始流量序列模式使用 TrafficMambaEncoder，应使用新的 global_repr。
+- 保持返回格式仍然是 Tuple[torch.Tensor, torch.Tensor]。
+
+==================================================
+八、检查 URL n-gram gate 尾部补零问题
+==================================================
+
+URL 编码器中 NGramEmbedding 会将 2-gram 和 3-gram embedding pad 到 1-gram 长度，然后 softmax gate 融合：
+
+embed_2 = _pad_to_length(...)
+embed_3 = _pad_to_length(...)
+gate = torch.softmax(gate_logits, dim=-1)
+
+问题是 URL 尾部位置上，2-gram / 3-gram 可能是补零向量，但 gate 仍可能给它们分配权重，稀释有效的 1-gram 信息。
+
+请检查当前数据集中 ids_2gram 和 ids_3gram 的 shape 和 padding 规则。如果可以安全判断有效位置，请为 NGramEmbedding 增加 n-gram 有效性 mask：
+
+1. 1-gram 有效性：ids_1gram != 0
+2. 2-gram 有效性：ids_2gram != 0，pad 到 1-gram 长度
+3. 3-gram 有效性：ids_3gram != 0，pad 到 1-gram 长度
+
+在 softmax 前，将无效 n-gram 的 gate_logits 设为 -1e4。
+
+需要注意：
+
+- 如果某个位置 1/2/3-gram 都无效，不要产生 NaN。
+- 1-gram padding 位置后续会由 url_mask 在 Transformer 中屏蔽。
+- 修改后请确保 URL 编码器 forward 接口不破坏现有 dataloader。
+
+如果实现复杂或可能引入兼容问题，请先不要强行修改，而是在代码注释或 TODO 中标注，并说明需要确认 ids_2gram / ids_3gram 的 padding 规则。
+
+==================================================
+九、保持输出接口兼容
+==================================================
+
+PhishingDetector.forward() 当前输出字段包括：
+
+- binary_logit
+- binary_probability
+- logits
+- main_logits
+- type_logits
+- risk_score
+- fusion_gate_stats，可选
+
+请确保修改后这些字段仍然存在，训练、验证、保存 checkpoint 不报错。
+
+不要改变 train.py 中 criterion、evaluate、extract_binary_probabilities 依赖的字段名。
+
+==================================================
+十、增加必要的最小测试或自检代码
+==================================================
+
+请至少做以下自检：
+
+1. GateCrossModalFusion 单独 forward：
+   - return_gate_stats=False 时只返回 tensor
+   - return_gate_stats=True 时返回 tuple
+   - get_last_gate_stats() 不报错
+
+2. PhishingDetector dummy batch forward：
+   - TOP30 模式可以跑通
+   - raw_sequence 模式可以跑通
+   - 输出字段完整
+
+3. 检查 tensor shape：
+   - fused 输出维度仍为 config.fusion_dim
+   - binary_logit shape 为 [batch_size]
+   - type_logits shape 为 [batch_size, num_phish_types]
+   - risk_score shape 为 [batch_size]
+
+4. 检查没有因为 mask dtype 导致报错：
+   - bool mask 和 float mask 都要处理合理
+   - CLS token 位置不能被清零
+
+==================================================
+十一、不要做的事情
+==================================================
+
+请不要做以下改动：
+
+1. 不要重写整个训练流程。
+2. 不要删除 URLTransformerEncoder。
+3. 不要删除 TrafficFeatureMLP。
+4. 不要删除 TrafficMambaEncoder。
+5. 不要改变 dataloader 的 batch 字段名。
+6. 不要改变模型输出字段名。
+7. 不要把二分类任务改成多分类任务。
+8. 不要只为了让代码跑通而绕过流量分支。
+9. 不要把 traffic_branch_scale 固定成普通 float，保留为可学习 nn.Parameter。
+10. 不要引入新的大型依赖库。
+
+==================================================
+十二、请最终输出
+==================================================
+
+完成修改后，请输出：
+
+1. 修改了哪些文件；
+2. 每个文件改了什么；
+3. 为什么这样改；
+4. 是否影响已有训练命令；
+5. 如何运行最小自检；
+6. 建议我后续做哪些消融实验。
+
+后续建议的消融实验至少包括：
+
+A. URL-only
+B. Traffic-only，TOP30 特征
+C. URL + TOP30，traffic_branch_scale_init=0.1
+D. URL + TOP30，traffic_branch_scale_init=1.0
+E. URL + TOP30，改进版 fusion
+F. URL + raw_sequence TrafficMambaEncoder
+G. URL + TOP30 + raw_sequence 双流量分支，如果当前项目结构允许
+
+请保证代码风格与原项目一致，注释使用中文或项目已有风格，类型标注尽量保持完整。

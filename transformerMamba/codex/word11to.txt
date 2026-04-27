@@ -1,0 +1,94 @@
+ 已按 word11.txt 完成这轮结构优化，保留了现有训练流、batch 字段和模型输出字段。
+
+  修改文件
+
+  - models/fusion.py
+  - models/detector.py
+  - models/traffic_encoder.py
+  - models/url_encoder.py
+  - config.py
+  - train.py
+  - tests/test_dataset.py
+  - tests/test_smoke.py
+  - tests/test_traffic_feature_extractor.py
+  - tests/test_model_components.py
+
+  每个文件改了什么
+
+  - models/fusion.py
+      - 修正 get_last_gate_stats() 返回值。
+      - 改成 url_proj/traffic_proj = Linear + LayerNorm。
+      - gate 输入改为 url_state + traffic_state + diff + interaction。
+      - output 输入改为 url_state + traffic_state + fused + diff + interaction。
+      - 只有 return_gate_stats=True 时才统计 gate，避免每个 batch 做 .item() 同步。
+      - 扩展了 gate 诊断字段：gate_std、gate_lt_0_1_ratio、gate_gt_0_9_ratio、sample_gate_mean_min/max 等。
+  - models/detector.py
+      - 修正导入方式，避免脚本直跑时不稳定。
+      - top30_extracted_stats 模式下的 traffic_branch_scale 初始值改为可配置，默认 1.0。
+      - 输出字段未改，仍保留 binary_logit、binary_probability、logits、main_logits、type_logits、risk_score、可选 fusion_gate_stats。
+  - models/traffic_encoder.py
+      - 修复 MambaStyleBlock 的 padding residual 泄漏问题，mask 现在作用在 residual + outputs 之后。
+      - TrafficMambaEncoder 增加 pool_proj，最终全局表示改为 CLS + masked mean pooling 融合。
+      - 在 position embedding 后和 block 后都显式清理 padding 位置，保留 CLS=True。
+  - models/url_encoder.py
+      - 为 NGramEmbedding 增加 1/2/3-gram 有效位 mask。
+      - 在 softmax 前把无效 n-gram 的 gate_logits 设为 -1e4，避免尾部 pad 的 2/3-gram 稀释 1-gram。
+  - config.py
+      - 新增 traffic_branch_scale_init: float = 1.0。
+      - CLI 新增 --traffic_branch_scale_init。
+  - train.py
+      - 训练时会记录 traffic_branch_scale_init，方便做消融对比。
+  - 测试文件
+      - 统一为当前仓库的本地导入方式。
+      - 新增 tests/test_model_components.py，覆盖 GateCrossModalFusion 诊断接口和 PhishingDetector 的两种 forward 路径。
+
+  为什么这样改
+
+  - fusion 原实现表达能力偏弱，而且默认每个 batch 都做 gate 统计，会引入 GPU 到 CPU 的同步开销。
+  - MambaStyleBlock 原来会把 padding 位置的 residual 留下来，多层后容易污染表示。
+  - 单纯取 CLS 对当前这种近似局部序列建模不够稳，加入 masked mean pooling 更可靠。
+  - traffic_branch_scale=0.1 会过度压制 TOP30 流量分支，默认改成 1.0 更符合辅助分支正常训练。
+  - URL n-gram 融合尾部未屏蔽无效 2/3-gram，会让 gate 在 padding 位置分配错误权重。
+
+  是否影响已有训练命令
+
+  - 现有训练命令不需要改，默认仍可运行。
+  - 只是多了一个可选参数：
+
+  python train.py --traffic_branch_scale_init 1.0
+
+  - 如果你不传这个参数，默认就是 1.0。
+  - dataloader 字段名没改，模型输出字段名没改，criterion/evaluate/extract_binary_probabilities 依赖接口没破坏。
+
+  最小自检
+
+  - 已通过：
+
+  pytest tests/test_traffic_feature_extractor.py tests/test_smoke.py -q
+
+  结果是 4 passed。
+
+  - 已补但当前环境无法执行：
+
+  pytest tests/test_model_components.py -q -rs
+
+  当前环境缺少 torch，所以是 skipped，不是代码失败。
+
+  - 也做了编译检查：
+
+  python -m compileall config.py models train.py tests
+
+  建议后续做的消融实验
+
+  - A. URL-only
+  - B. Traffic-only，TOP30 特征
+  - C. URL + TOP30，traffic_branch_scale_init=0.1
+  - D. URL + TOP30，traffic_branch_scale_init=1.0
+  - E. URL + TOP30，当前这版改进 fusion
+  - F. URL + raw_sequence TrafficMambaEncoder
+  - G. URL + TOP30 + raw_sequence 双流量分支，如果你准备继续扩结构
+
+  如果你要，我下一步可以继续做两件事之一：
+
+  1. 直接把 G 方案的双流量分支原型也搭出来。
+  2. 先把当前版本需要的实验命令整理成一套可直接跑的脚本参数。

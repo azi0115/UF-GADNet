@@ -61,7 +61,10 @@ class MambaStyleBlock(nn.Module):
         outputs = self.dropout(outputs)
         if mask is not None:
             outputs = outputs * mask.unsqueeze(-1)
-        return residual + outputs
+        result = residual + outputs
+        if mask is not None:
+            result = result * mask.unsqueeze(-1)
+        return result
 
 
 class TrafficMambaEncoder(nn.Module):
@@ -105,6 +108,11 @@ class TrafficMambaEncoder(nn.Module):
             ]
         )
         self.output_norm = nn.LayerNorm(embed_dim)
+        self.pool_proj = nn.Sequential(
+            nn.Linear(embed_dim * 2, embed_dim),
+            nn.GELU(),
+            nn.LayerNorm(embed_dim),
+        )
 
     def forward(
         self,
@@ -131,9 +139,15 @@ class TrafficMambaEncoder(nn.Module):
             dim=1,
         )
         mask_float = full_mask.float()
+        sequence = sequence * mask_float.unsqueeze(-1)
 
         for block in self.blocks:
             sequence = block(sequence, mask_float)
 
         sequence = self.output_norm(sequence)
-        return sequence[:, 0], sequence[:, 1:]
+        sequence = sequence * mask_float.unsqueeze(-1)
+        traffic_sequence = sequence[:, 1:]
+        traffic_mask_float = traffic_mask.unsqueeze(-1).float()
+        pooled = (traffic_sequence * traffic_mask_float).sum(dim=1) / traffic_mask_float.sum(dim=1).clamp_min(1.0)
+        global_repr = self.pool_proj(torch.cat([sequence[:, 0], pooled], dim=-1))
+        return global_repr, traffic_sequence

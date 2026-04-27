@@ -1,4 +1,4 @@
-"""钓鱼网站检测模型顶层封装。"""
+"""Top-level phishing detector model."""
 
 from __future__ import annotations
 
@@ -13,14 +13,9 @@ from .url_encoder import URLTransformerEncoder
 
 
 class PhishingDetector(nn.Module):
-    """联合 URL 与流量模态完成钓鱼检测的多任务模型。"""
+    """Joint URL and traffic phishing detector."""
 
     def __init__(self, config) -> None:
-        """初始化完整检测器。
-
-        Args:
-            config: 提供编码器、融合层和任务头参数的配置对象。
-        """
         super().__init__()
         self.use_traffic = getattr(config, "use_traffic", True)
         self.url_encoder = URLTransformerEncoder(
@@ -78,20 +73,6 @@ class PhishingDetector(nn.Module):
         traffic_mask: torch.Tensor,
         return_diagnostics: bool = False,
     ) -> Dict[str, torch.Tensor]:
-        """执行多模态前向传播。
-
-        Args:
-            ids_1gram: 1-gram URL token ID 张量。
-            ids_2gram: 2-gram URL token ID 张量。
-            ids_3gram: 3-gram URL token ID 张量。
-            url_mask: URL 有效位置掩码。
-            traffic_feats: 流量序列张量。
-            traffic_mask: 流量有效位置掩码。
-            return_diagnostics: 是否额外返回轻量级诊断信息。
-
-        Returns:
-            Dict[str, torch.Tensor]: 主任务 logits、辅助任务输出与离散预测结果。
-        """
         url_repr, _ = self.url_encoder(ids_1gram, ids_2gram, ids_3gram, url_mask)
         if self.use_traffic:
             traffic_repr, _ = self.traffic_encoder(traffic_feats, traffic_mask)
@@ -102,6 +83,7 @@ class PhishingDetector(nn.Module):
                 device=ids_1gram.device,
                 dtype=url_repr.dtype,
             )
+
         fusion_result = self.fusion(url_repr, traffic_repr, return_gate_stats=return_diagnostics)
         if return_diagnostics:
             fused, gate_stats = fusion_result

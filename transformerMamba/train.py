@@ -13,7 +13,6 @@ from config import get_config
 from dataset import (
     build_dataloader,
     build_url_vocabs,
-    debug_position_aware_tokenization,
     extract_ngrams,
     load_records,
     save_url_vocabs,
@@ -126,6 +125,8 @@ def main() -> None:
 
     train_records = load_records(config.train_path)
     val_records = load_records(config.val_path)
+    logger.info("Traffic input mode: %s", getattr(config, "traffic_input_mode", "raw_sequence"))
+    logger.info("Using TrafficMambaEncoder=%s", getattr(config, "use_traffic", True))
     # URL 词表严格基于训练集构建，避免验证集信息泄露。
     vocabs = build_url_vocabs((record.get("url", "") for record in train_records), config)
     save_url_vocabs(vocabs, config.vocab_path)

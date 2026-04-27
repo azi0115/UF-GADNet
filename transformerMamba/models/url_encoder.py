@@ -25,6 +25,14 @@ def _pad_to_length(sequence: torch.Tensor, length: int) -> torch.Tensor:
     return F.pad(sequence, (0, 0, 0, pad_width))
 
 
+def _pad_ids_to_length(sequence: torch.Tensor, length: int) -> torch.Tensor:
+    """Pad token IDs to the target length using the pad token 0."""
+    if sequence.size(1) >= length:
+        return sequence[:, :length]
+    pad_width = length - sequence.size(1)
+    return F.pad(sequence, (0, pad_width), value=0)
+
+
 class NGramEmbedding(nn.Module):
     """对 1/2/3-gram URL token 做嵌入并进行门控融合。"""
 
@@ -76,7 +84,18 @@ class NGramEmbedding(nn.Module):
         embed_1 = self.embed_1gram(ids_1gram)
         embed_2 = _pad_to_length(self.embed_2gram(ids_2gram), embed_1.size(1))
         embed_3 = _pad_to_length(self.embed_3gram(ids_3gram), embed_1.size(1))
+        ids_2_padded = _pad_ids_to_length(ids_2gram, ids_1gram.size(1))
+        ids_3_padded = _pad_ids_to_length(ids_3gram, ids_1gram.size(1))
         gate_logits = self.gate(torch.cat([embed_1, embed_2, embed_3], dim=-1))
+        valid_mask = torch.stack(
+            [
+                ids_1gram.ne(0),
+                ids_2_padded.ne(0),
+                ids_3_padded.ne(0),
+            ],
+            dim=-1,
+        )
+        gate_logits = gate_logits.masked_fill(~valid_mask, -1e4)
         gate = torch.softmax(gate_logits, dim=-1)
         fused = (
             gate[..., 0:1] * embed_1
