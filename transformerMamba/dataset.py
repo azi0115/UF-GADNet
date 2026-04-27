@@ -6,6 +6,7 @@ import ipaddress
 import json
 import logging
 import os
+import pickle
 from collections import Counter
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
@@ -97,7 +98,18 @@ def validate_record_schema(
 
 
 def load_records(path: str) -> List[Dict[str, Any]]:
-    """Load samples from either JSON arrays or JSONL files."""
+    """Load samples from pickle, JSON arrays, or JSONL files."""
+    extension = os.path.splitext(path)[1].lower()
+
+    if extension in {".pkl", ".pickle"}:
+        with open(path, "rb") as handle:
+            payload = pickle.load(handle)
+        if isinstance(payload, tuple):
+            payload = list(payload)
+        if not isinstance(payload, list):
+            raise ValueError(f"Expected a pickled list in {path}, got {type(payload).__name__}.")
+        return payload
+
     with open(path, "r", encoding="utf-8") as handle:
         content = handle.read().strip()
     if not content:

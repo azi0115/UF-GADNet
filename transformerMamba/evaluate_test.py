@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
         description="Evaluate a saved phishing detector checkpoint",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--test_path", type=str, default="data/b_data/data/split/test.json")
+    parser.add_argument("--test_path", type=str, default=PhishingConfig.test_path)
     parser.add_argument("--model_path", type=str, default="checkpoints/best_model.pt")
     parser.add_argument("--output_file", type=str, default="eval_results/test_metrics.json")
     parser.add_argument("--threshold", type=float, default=None)

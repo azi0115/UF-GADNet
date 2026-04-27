@@ -110,8 +110,8 @@ def main():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="data/split",
-        help="输出目录，默认 data/split"
+        default="data/split1",
+        help="输出目录，默认 data/split1"
     )
 
     parser.add_argument(
