@@ -1,0 +1,72 @@
+你是一名资深深度学习算法工程师，请对以下项目进行系统级优化，并输出一份结构清晰的技术文档（Markdown格式），用于指导代码重构与性能提升。
+
+项目背景：
+这是一个用于恶意流量检测的多模态模型，包含：
+1）URL 分支（基于 position-aware n-gram + Transformer）
+2）Traffic 分支（当前使用 raw sequence + Mamba encoder）
+3）融合模块（简单拼接或门控）
+4）分类任务（二分类 + 多类别 phishing 类型）
+
+当前存在问题：
+
+* 模型容量与数据规模不匹配（约2万样本）
+* Traffic 分支存在输入模式混乱（raw_sequence vs feature_vector）
+* 融合策略较弱
+* loss 设计过重（Focal + 多损失）
+* 训练不稳定（学习率过低等）
+
+你的任务是：
+对整个项目进行“结构级优化”，而不是简单调参，并输出以下内容：
+
+【1】系统架构优化方案
+
+* 重构后的整体模型结构图（用文字描述）
+* 各模块职责重新定义
+* 数据流说明（input → encoder → fusion → output）
+
+【2】URL 编码模块优化
+
+* 是否保留 n-gram + position 设计
+* 如何降低维度与冗余
+* Transformer 层数与 FFN 调整建议
+* 是否引入轻量化结构
+
+【3】Traffic 模块重构（重点）
+必须同时给出两套方案：
+A. raw_sequence 方案（优化 Mamba/Conv结构）
+B. feature_vector 方案（30维特征 + MLP）
+并说明：
+
+* 各自适用场景
+* 输入输出 shape
+* 优缺点对比
+
+【4】Fusion 模块优化
+
+* 现有方法的问题分析
+* 设计一个改进方案（例如 attention fusion 或 gating）
+* 给出结构说明和 forward 流程
+
+【5】Loss 与训练策略优化
+
+* 是否保留 Focal Loss
+* 如何简化 loss 结构
+* 推荐学习率、batch size、dropout
+* 是否使用 warmup / cosine decay
+
+【6】代码级修改建议（必须具体）
+
+* 指出需要修改的文件（如 detector.py / traffic_encoder.py）
+* 给出关键函数修改示例（伪代码或PyTorch代码）
+* 明确输入输出维度
+
+【7】实验设计建议
+
+* 如何验证 URL / Traffic / Fusion 各自效果
+* 对照实验设计
+
+要求：
+
+* 不要泛泛而谈，必须具体到结构和代码级别
+* 所有 shape 必须明确
+* 所有建议必须可落地

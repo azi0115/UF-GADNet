@@ -23,10 +23,10 @@ class PhishingConfig:
     save_position_vocab_meta: bool = True
     lowercase_url: bool = False
 
-    url_embed_dim: int = 128
+    url_embed_dim: int = 96
     url_num_heads: int = 4
-    url_num_layers: int = 3
-    url_ffn_dim: int = 1024
+    url_num_layers: int = 2
+    url_ffn_dim: int = 384
 
     traffic_input_dim: int = 2
     traffic_input_mode: str = "raw_sequence"
@@ -50,17 +50,17 @@ class PhishingConfig:
     vocab_2gram_max_size: int = 1000000
     vocab_3gram_max_size: int = 1000000
 
-    traffic_embed_dim: int = 128
-    traffic_num_layers: int = 4
-    traffic_expand_factor: int = 4
-    traffic_kernel_size: int = 7
+    traffic_embed_dim: int = 96
+    traffic_num_layers: int = 2
+    traffic_expand_factor: int = 2
+    traffic_kernel_size: int = 5
 
-    fusion_dim: int = 128
-    dropout: float = 0.15
-    batch_size: int = 16
+    fusion_dim: int = 96
+    dropout: float = 0.1
+    batch_size: int = 32
     epochs: int = 30
-    lr: float = 1e-5
-    weight_decay: float = 5e-5
+    lr: float = 3e-4
+    weight_decay: float = 1e-4
     patience: int = 20
 
     focal_alpha: float = 0.75

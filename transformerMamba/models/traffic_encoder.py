@@ -9,6 +9,41 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class LocalConvStem(nn.Module):
+    """Lightweight local temporal stem before the shallow Mamba stack."""
+
+    def __init__(
+        self,
+        embed_dim: int,
+        kernel_size: int = 3,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.norm = nn.LayerNorm(embed_dim)
+        self.depthwise_conv = nn.Conv1d(
+            embed_dim,
+            embed_dim,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+            groups=embed_dim,
+        )
+        self.pointwise_proj = nn.Linear(embed_dim, embed_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, inputs: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        residual = inputs
+        states = self.norm(inputs)
+        states = self.depthwise_conv(states.transpose(1, 2)).transpose(1, 2)
+        outputs = self.pointwise_proj(F.gelu(states))
+        outputs = self.dropout(outputs)
+        if mask is not None:
+            outputs = outputs * mask.unsqueeze(-1)
+        result = residual + outputs
+        if mask is not None:
+            result = result * mask.unsqueeze(-1)
+        return result
+
+
 class MambaStyleBlock(nn.Module):
     """近似 Mamba 风格的局部卷积时序建模块。"""
 
@@ -94,6 +129,11 @@ class TrafficMambaEncoder(nn.Module):
         super().__init__()
         self.input_norm = nn.LayerNorm(input_dim)
         self.input_proj = nn.Linear(input_dim, embed_dim)
+        self.local_stem = LocalConvStem(
+            embed_dim=embed_dim,
+            kernel_size=3 if kernel_size >= 3 else kernel_size,
+            dropout=dropout,
+        )
         self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim) * 0.02)
         self.position = nn.Parameter(torch.zeros(1, max_len + 1, embed_dim))
         self.blocks = nn.ModuleList(
@@ -129,6 +169,7 @@ class TrafficMambaEncoder(nn.Module):
             Tuple[torch.Tensor, torch.Tensor]: 全局 CLS 表示与逐步时序表示。
         """
         sequence = self.input_proj(self.input_norm(traffic_feats))
+        sequence = self.local_stem(sequence, traffic_mask.float())
         batch_size, sequence_length, _ = sequence.shape
         cls_token = self.cls_token.expand(batch_size, -1, -1)
         sequence = torch.cat([cls_token, sequence], dim=1)
