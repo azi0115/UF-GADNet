@@ -52,14 +52,17 @@ class PhishingConfig:
 
     traffic_embed_dim: int = 96
     traffic_num_layers: int = 2
+    traffic_num_heads: int = 4
     traffic_expand_factor: int = 2
     traffic_kernel_size: int = 5
+    traffic_patch_len: int = 8
+    traffic_patch_stride: int = 8
 
     fusion_dim: int = 96
     dropout: float = 0.1
     batch_size: int = 32
     epochs: int = 30
-    lr: float = 3e-4
+    lr: float = 1e-5
     weight_decay: float = 1e-4
     patience: int = 20
 
@@ -134,8 +137,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--traffic_embed_dim", type=int, default=PhishingConfig.traffic_embed_dim)
     parser.add_argument("--traffic_num_layers", type=int, default=PhishingConfig.traffic_num_layers)
+    parser.add_argument("--traffic_num_heads", type=int, default=PhishingConfig.traffic_num_heads)
     parser.add_argument("--traffic_expand_factor", type=int, default=PhishingConfig.traffic_expand_factor)
     parser.add_argument("--traffic_kernel_size", type=int, default=PhishingConfig.traffic_kernel_size)
+    parser.add_argument("--traffic_patch_len", type=int, default=PhishingConfig.traffic_patch_len)
+    parser.add_argument("--traffic_patch_stride", type=int, default=PhishingConfig.traffic_patch_stride)
 
     parser.add_argument("--fusion_dim", type=int, default=PhishingConfig.fusion_dim)
     parser.add_argument("--num_phish_types", type=int, default=PhishingConfig.num_phish_types)

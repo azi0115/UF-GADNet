@@ -33,8 +33,11 @@ class PhishingDetector(nn.Module):
             input_dim=config.traffic_input_dim,
             embed_dim=config.traffic_embed_dim,
             num_layers=config.traffic_num_layers,
+            num_heads=getattr(config, "traffic_num_heads", 4),
             expand_factor=config.traffic_expand_factor,
             kernel_size=config.traffic_kernel_size,
+            patch_len=getattr(config, "traffic_patch_len", 8),
+            patch_stride=getattr(config, "traffic_patch_stride", 8),
             max_len=config.max_traffic_len,
             dropout=config.dropout,
         )

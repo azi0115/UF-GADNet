@@ -128,14 +128,17 @@ def main() -> None:
     logger.info("Traffic input mode: %s", getattr(config, "traffic_input_mode", "raw_sequence"))
     logger.info("Using TrafficMambaEncoder=%s", getattr(config, "use_traffic", True))
     logger.info(
-        "raw-sequence defaults | url_embed_dim=%d | url_layers=%d | url_ffn_dim=%d | traffic_embed_dim=%d | traffic_layers=%d | traffic_expand_factor=%d | traffic_kernel_size=%d | fusion_dim=%d | batch_size=%d | lr=%.2e | weight_decay=%.2e",
+        "raw-sequence defaults | url_embed_dim=%d | url_layers=%d | url_ffn_dim=%d | traffic_embed_dim=%d | traffic_layers=%d | traffic_heads=%d | traffic_expand_factor=%d | traffic_kernel_size=%d | traffic_patch_len=%d | traffic_patch_stride=%d | fusion_dim=%d | batch_size=%d | lr=%.2e | weight_decay=%.2e",
         config.url_embed_dim,
         config.url_num_layers,
         config.url_ffn_dim,
         config.traffic_embed_dim,
         config.traffic_num_layers,
+        config.traffic_num_heads,
         config.traffic_expand_factor,
         config.traffic_kernel_size,
+        config.traffic_patch_len,
+        config.traffic_patch_stride,
         config.fusion_dim,
         config.batch_size,
         config.lr,
