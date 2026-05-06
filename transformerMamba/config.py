@@ -25,7 +25,7 @@ class PhishingConfig:
 
     url_embed_dim: int = 96
     url_num_heads: int = 4
-    url_num_layers: int = 2
+    url_num_layers: int = 10
     url_ffn_dim: int = 384
 
     traffic_input_dim: int = 2
@@ -45,7 +45,7 @@ class PhishingConfig:
     use_traffic: bool = True
 
     max_url_len: int = 512
-    max_traffic_len: int = 1024
+    max_traffic_len: int = 1000
     vocab_1gram_max_size: int = 10000
     vocab_2gram_max_size: int = 1000000
     vocab_3gram_max_size: int = 1000000
@@ -62,7 +62,7 @@ class PhishingConfig:
     dropout: float = 0.1
     batch_size: int = 32
     epochs: int = 30
-    lr: float = 1e-5
+    lr: float = 1e-4
     weight_decay: float = 1e-4
     patience: int = 20
 
