@@ -7,6 +7,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from config import PhishingConfig
+from models import TrafficOnlyDetector, TrafficTransformerOnlyDetector, URLOnlyDetector
 from models.detector import PhishingDetector
 from models.fusion import GateCrossModalFusion
 
@@ -79,3 +80,63 @@ def test_phishing_detector_forward_raw_sequence() -> None:
 
     _assert_detector_outputs(outputs, batch_size=2, num_phish_types=config.num_phish_types)
     assert "fusion_gate_stats" in outputs
+
+
+def test_url_only_detector_forward() -> None:
+    config = PhishingConfig(batch_size=2)
+    model = URLOnlyDetector(config)
+    batch = _make_dummy_inputs()
+
+    outputs = model(
+        ids_1gram=batch["ids_1gram"],
+        ids_2gram=batch["ids_2gram"],
+        ids_3gram=batch["ids_3gram"],
+        url_mask=batch["url_mask"],
+        traffic_feats=batch["traffic_feats_raw"],
+        traffic_mask=batch["traffic_mask_raw"],
+    )
+
+    _assert_detector_outputs(outputs, batch_size=2, num_phish_types=config.num_phish_types)
+
+
+def test_traffic_only_detector_forward() -> None:
+    config = PhishingConfig(batch_size=2)
+    model = TrafficOnlyDetector(config)
+    batch = _make_dummy_inputs()
+
+    outputs = model(
+        ids_1gram=batch["ids_1gram"],
+        ids_2gram=batch["ids_2gram"],
+        ids_3gram=batch["ids_3gram"],
+        url_mask=batch["url_mask"],
+        traffic_feats=batch["traffic_feats_raw"],
+        traffic_mask=batch["traffic_mask_raw"],
+    )
+
+    _assert_detector_outputs(outputs, batch_size=2, num_phish_types=config.num_phish_types)
+
+
+def test_traffic_transformer_only_detector_forward() -> None:
+    config = PhishingConfig(batch_size=2)
+    model = TrafficTransformerOnlyDetector(
+        input_dim=config.traffic_input_dim,
+        embed_dim=config.traffic_embed_dim,
+        num_heads=config.traffic_num_heads,
+        num_layers=config.traffic_num_layers,
+        ff_dim=config.traffic_embed_dim * 4,
+        max_len=config.max_traffic_len,
+        num_phish_types=config.num_phish_types,
+        dropout=config.dropout,
+    )
+    batch = _make_dummy_inputs()
+
+    outputs = model(
+        ids_1gram=batch["ids_1gram"],
+        ids_2gram=batch["ids_2gram"],
+        ids_3gram=batch["ids_3gram"],
+        url_mask=batch["url_mask"],
+        traffic_feats=batch["traffic_feats_raw"],
+        traffic_mask=batch["traffic_mask_raw"],
+    )
+
+    _assert_detector_outputs(outputs, batch_size=2, num_phish_types=config.num_phish_types)
